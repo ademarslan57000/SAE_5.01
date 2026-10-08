@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-
+import '../modele/equipement.dart';
 import 'scan/scanner.dart';
 import 'admin/admin.dart';
 import 'historique/historique.dart';
@@ -17,19 +17,39 @@ class NavigationScreen extends StatefulWidget {
 class _NavigationScreenState extends State<NavigationScreen> {
   int _currentIndex = 0;
 
+  final List<Equipement> _equipements =[
+    Equipement(id: 'helmet', nom: "Casque de chantier", icon: "🪖", isRequired: false),
+    Equipement(id: 'vest', nom: "Gilet haute visibilité", icon: "🦺", isRequired: false),
+    Equipement(id: 'gloves', nom: "Gants de protection", icon: "🧤", isRequired: false),
+    Equipement(id: 'boots', nom: "Chaussures de sécurité", icon: "🥾", isRequired: false),
+    Equipement(id: 'goggles', nom: "Lunettes de protection", icon: "🥽", isRequired: false),
+    Equipement(id: 'ears', nom: "Protection auditive", icon: "🎧", isRequired: false),
+    Equipement(id: 'harness', nom: "Harnais de sécurité", icon: "🧗", isRequired: false),
+    Equipement(id: 'mask', nom: "Masque respiratoire", icon: "😷", isRequired: false)
+  ];
+
   @override
   Widget build(BuildContext context) {
-    final screens = [
-      ScanScreen(cameras: widget.cameras),
-      const AdminConfigScreen(),
-      const HistoryScreen(),
-    ];
-
     return Scaffold(
-      body: screens[_currentIndex],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          ScanScreen(
+            cameras: widget.cameras,
+            equipementsRequis: _equipements.where((e) => e.isRequired).toList(),
+          ),
+          AdminConfigScreen(
+            equipements: _equipements,
+            onChanged: (updatedList){
+              setState(() {});
+            },
+          ),
+          const HistoryScreen(),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
+        onDestinationSelected: (index){
           setState(() {
             _currentIndex = index;
           });

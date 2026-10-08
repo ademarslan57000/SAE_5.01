@@ -8,7 +8,7 @@ class Equipement {
     required this.id,
     required this.nom,
     required this.icon,
-    this.isRequired = false
+    this.isRequired = false,
 });
 
 }
