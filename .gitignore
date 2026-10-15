@@ -1,0 +1,13 @@
+# Archives et datasets bruts (trop lourds / sources externes)
+*.zip
+cppe/
+raw/
+dataset_fusionne/
+
+# Python
+__pycache__/
+*.pyc
+
+# Sorties d'entraînement YOLO
+runs/
+*.cache

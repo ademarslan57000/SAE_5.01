@@ -1,0 +1,62 @@
+# Config de fusion SAE 501 — chemins relatifs à ce fichier
+output: ./dataset_fusionne
+seed: 42
+
+# Liste de classes UNIFIÉE (l'ordre = les IDs finaux, à partager avec la personne Modèle)
+classes:
+  - person
+  - helmet
+  - no_helmet
+  - vest
+  - no_vest
+  - gloves
+  - no_gloves
+  - boots
+  - no_boots
+  - goggles
+  - no_goggle
+  # À décommenter quand il y aura des photos annotées (actuellement 0 exemple) :
+  # - hearing_protection
+  # - mask
+  # - harness
+
+sources:
+  - name: cppe                      # Construction-PPE (Ultralytics), splits déjà faits
+    path: ../cppe
+    names: [helmet, gloves, vest, boots, goggles, none, Person, no_helmet, no_goggle, no_gloves, no_boots]
+    mapping:
+      helmet: helmet
+      gloves: gloves
+      vest: vest
+      boots: boots
+      goggles: goggles
+      none: no_vest                 # 'none' = torse SANS gilet (vérifié visuellement)
+      Person: person
+      no_helmet: no_helmet
+      no_goggle: no_goggle
+      no_gloves: no_gloves
+      no_boots: no_boots
+
+  - name: maison                    # dataset manuel (Label Studio, export YOLO)
+    path: ../raw                    # noms lus dans classes.txt
+    split: {train: 0.7, val: 0.15, test: 0.15}
+    mapping:
+      no_boots: no_boots
+      no_gloves: no_gloves
+      no_goggle: no_goggle
+      no_helmet: no_helmet
+      no_vest: no_vest
+      person: person
+      # Pas d'équivalent dans les datasets publics -> supprimées pour la v1
+      # (sinon conflit : des milliers de visages sans masque non annotés dans cppe)
+      no_hearing_protection: null
+      no_mask: null
+
+  # Exemple pour ajouter Helmet-Vest (Roboflow) — adapter 'names' au data.yaml téléchargé :
+  # - name: helmetvest
+  #   path: ../helmet_vest
+  #   names: [helmet, head, vest]   # <- recopier depuis leur data.yaml
+  #   mapping:
+  #     helmet: helmet
+  #     head: no_helmet
+  #     vest: vest
