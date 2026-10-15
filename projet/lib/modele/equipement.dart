@@ -9,6 +9,5 @@ class Equipement {
     required this.nom,
     required this.icon,
     this.isRequired = false,
-});
-
+  });
 }

@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:projet/modele/equipement.dart';
+import '../../modele/equipement.dart';
+import '../../modele/detection.dart';
+import 'detection_overlay.dart';
 
 class ScanScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
   final List<Equipement> equipementsRequis;
-  
+
   const ScanScreen({
-    super.key, 
-    required this.cameras, 
+    super.key,
+    required this.cameras,
     required this.equipementsRequis,
   });
 
@@ -23,6 +25,8 @@ class _ScanScreenState extends State<ScanScreen> {
   int _selectedCameraIndex = 0;
   bool _isCameraReady = false;
   String? _errorMessage;
+  List<Detection> _detectionsActives = [];
+  bool _simulationActive = false;
 
   @override
   void initState() {
@@ -31,7 +35,7 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Future<void> _initCamera() async {
-    if (widget.cameras.isEmpty){
+    if (widget.cameras.isEmpty) {
       setState(() => _errorMessage = "Aucune caméra détectée sur cet appareil");
       return;
     }
@@ -61,6 +65,36 @@ class _ScanScreenState extends State<ScanScreen> {
     if (widget.cameras.length < 2) return;
     _selectedCameraIndex = (_selectedCameraIndex + 1) % widget.cameras.length;
     _initCamera();
+  }
+
+  void _toggleSimulationDetections() {
+    setState(() {
+      _simulationActive = !_simulationActive;
+      if (_simulationActive) {
+        _detectionsActives = [
+          Detection(
+            idEquipement: 'helmet',
+            label: 'Casque',
+            confidence: 0.95,
+            boundingBox: const Rect.fromLTWH(0.32, 0.18, 0.36, 0.16),
+          ),
+          Detection(
+            idEquipement: 'vest',
+            label: 'Gilet HV',
+            confidence: 0.91,
+            boundingBox: const Rect.fromLTWH(0.24, 0.38, 0.52, 0.30),
+          ),
+          Detection(
+            idEquipement: 'boots',
+            label: 'Chaussures',
+            confidence: 0.87,
+            boundingBox: const Rect.fromLTWH(0.28, 0.72, 0.44, 0.12),
+          ),
+        ];
+      } else {
+        _detectionsActives = [];
+      }
+    });
   }
 
   Future<void> _pickImageFromGallery() async {
@@ -96,11 +130,14 @@ class _ScanScreenState extends State<ScanScreen> {
       );
     }
 
-    if (!_isCameraReady || _controller == null){
+    if (!_isCameraReady || _controller == null) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
+
+    final Set<String> idsRequis =
+        widget.equipementsRequis.map((e) => e.id).toSet();
 
     return Scaffold(
       appBar: AppBar(
@@ -116,7 +153,7 @@ class _ScanScreenState extends State<ScanScreen> {
             icon: const Icon(Icons.photo_library),
             tooltip: 'Ouvrir la galerie',
             onPressed: _pickImageFromGallery,
-          ),  
+          ),
         ],
       ),
       body: Stack(
@@ -129,7 +166,7 @@ class _ScanScreenState extends State<ScanScreen> {
               height: MediaQuery.of(context).size.height * 0.6,
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: Colors.white70,
+                  color: Colors.white54,
                   width: 2,
                 ),
                 borderRadius: BorderRadius.circular(16),
@@ -140,16 +177,21 @@ class _ScanScreenState extends State<ScanScreen> {
                   padding: EdgeInsets.all(8.0),
                   child: Text(
                     'Placez la personne dans le cadre',
-                    style: TextStyle(color: Colors.white, 
-                    backgroundColor: Colors.black54,
-                    fontWeight: FontWeight.bold
+                    style: TextStyle(
+                      color: Colors.white,
+                      backgroundColor: Colors.black54,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ),
             ),
           ),
-
+          if (_detectionsActives.isNotEmpty)
+            DetectionOverlay(
+              detections: _detectionsActives,
+              idsRequis: idsRequis,
+            ),
           Positioned(
             top: 16,
             left: 16,
@@ -162,11 +204,35 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
               child: Text(
                 widget.equipementsRequis.isEmpty
-                ? "Aucun EPI obligatoire configuré."
-                : "Requis : ${widget.equipementsRequis.map((e) => e.icon).join(" ")}",
+                    ? "Aucun EPI obligatoire configuré."
+                    : "Requis : ${widget.equipementsRequis.map((e) => "${e.icon} ${e.nom}").join(" • ")}",
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 15),
+                style: const TextStyle(color: Colors.white, fontSize: 13),
               ),
+            ),
+          ),
+          Positioned(
+            bottom: 24,
+            left: 24,
+            right: 24,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    _simulationActive ? Colors.amber : Colors.black87,
+                foregroundColor:
+                    _simulationActive ? Colors.black : Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: Icon(
+                _simulationActive ? Icons.visibility_off : Icons.center_focus_strong,
+              ),
+              label: Text(
+                _simulationActive
+                    ? 'Masquer l\'overlay de détection'
+                    : 'Simuler l\'overlay de détection IA',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onPressed: _toggleSimulationDetections,
             ),
           ),
         ],
