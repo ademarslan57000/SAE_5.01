@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../modele/equipement.dart';
 import '../../modele/detection.dart';
 import 'detection_overlay.dart';
+import 'resultat_scan.dart';
 
 class ScanScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -95,6 +96,18 @@ class _ScanScreenState extends State<ScanScreen> {
         _detectionsActives = [];
       }
     });
+  }
+
+  void _ouvrirResultatControle() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ResultatScanScreen(
+          equipementsRequis: widget.equipementsRequis,
+          detections: _detectionsActives,
+        ),
+      ),
+    );
   }
 
   Future<void> _pickImageFromGallery() async {
@@ -213,26 +226,49 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
           Positioned(
             bottom: 24,
-            left: 24,
-            right: 24,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    _simulationActive ? Colors.amber : Colors.black87,
-                foregroundColor:
-                    _simulationActive ? Colors.black : Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              icon: Icon(
-                _simulationActive ? Icons.visibility_off : Icons.center_focus_strong,
-              ),
-              label: Text(
-                _simulationActive
-                    ? 'Masquer l\'overlay de détection'
-                    : 'Simuler l\'overlay de détection IA',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              onPressed: _toggleSimulationDetections,
+            left: 16,
+            right: 16,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor:
+                          _simulationActive ? Colors.amber : Colors.black87,
+                      foregroundColor:
+                          _simulationActive ? Colors.black : Colors.white,
+                      side: const BorderSide(color: Colors.amber),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: Icon(
+                      _simulationActive
+                          ? Icons.visibility_off
+                          : Icons.center_focus_strong,
+                    ),
+                    label: Text(
+                      _simulationActive ? 'Masquer IA' : 'Simuler IA',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: _toggleSimulationDetections,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.greenAccent.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: const Icon(Icons.verified_user),
+                    label: const Text(
+                      'Vérifier l\'accès',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: _ouvrirResultatControle,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
