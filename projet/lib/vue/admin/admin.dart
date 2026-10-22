@@ -1,3 +1,6 @@
+// Interface d'administration permettant de configurer les règles du chantier en direct
+// en définissant quels équipements de protection individuelle sont strictement obligatoires au portique.
+
 import 'package:flutter/material.dart';
 import '../../modele/equipement.dart';
 

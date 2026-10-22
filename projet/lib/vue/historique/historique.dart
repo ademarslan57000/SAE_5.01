@@ -1,3 +1,6 @@
+// Vue destinée à la consultation des contrôles antérieurs et à la consolidation
+// des indicateurs statistiques de conformité du portique de sécurité.
+
 import 'package:flutter/material.dart';
 
 class HistoryScreen extends StatelessWidget {

@@ -1,3 +1,5 @@
+// Écran de verdict Go / No-Go affichant l'accès autorisé (vert) ou refusé (rouge)
+// ainsi que la liste détaillée des équipements obligatoires détectés ou manquants.
 import 'package:flutter/material.dart';
 import '../../modele/equipement.dart';
 import '../../modele/detection.dart';
@@ -20,7 +22,7 @@ class ResultatScanScreen extends StatelessWidget {
     };
 
     final List<Equipement> manquants = equipementsRequis
-        .where((eq) => !mapDetections.containsKey(eq.id))
+        .where((e) => !mapDetections.containsKey(e.id))
         .toList();
 
     final bool accesAutorise = manquants.isEmpty;
@@ -61,8 +63,7 @@ class ResultatScanScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.bold,
-                      color:
-                          accesAutorise ? Colors.greenAccent : Colors.redAccent,
+                      color: accesAutorise ? Colors.greenAccent : Colors.redAccent,
                       letterSpacing: 1.2,
                     ),
                   ),
@@ -98,6 +99,7 @@ class ResultatScanScreen extends StatelessWidget {
                         final eq = equipementsRequis[index];
                         final Detection? det = mapDetections[eq.id];
                         final bool estPresent = det != null;
+
                         return Card(
                           margin: const EdgeInsets.symmetric(vertical: 6),
                           child: ListTile(
@@ -107,8 +109,7 @@ class ResultatScanScreen extends StatelessWidget {
                             ),
                             title: Text(
                               eq.nom,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                             subtitle: Text(
                               estPresent

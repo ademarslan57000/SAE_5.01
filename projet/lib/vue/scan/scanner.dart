@@ -1,3 +1,5 @@
+// Vue centrale du portique affichant le flux vidéo de la caméra en temps réel,
+// superposant le calque graphique des détections et déclenchant le passage vers l'écran de résultat.
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,6 +28,8 @@ class _ScanScreenState extends State<ScanScreen> {
   int _selectedCameraIndex = 0;
   bool _isCameraReady = false;
   String? _errorMessage;
+
+  // Liste des détections actuellement affichées sur l'écran
   List<Detection> _detectionsActives = [];
   bool _simulationActive = false;
 
@@ -35,9 +39,10 @@ class _ScanScreenState extends State<ScanScreen> {
     _initCamera();
   }
 
+  // Initialisation de la caméra avec résolution moyenne
   Future<void> _initCamera() async {
     if (widget.cameras.isEmpty) {
-      setState(() => _errorMessage = "Aucune caméra détectée sur cet appareil");
+      setState(() => _errorMessage = "Aucune caméra détectée sur cet appareil.");
       return;
     }
 
@@ -62,12 +67,14 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
+  // Bascule entre la caméra avant et arrière
   void _switchCamera() {
     if (widget.cameras.length < 2) return;
     _selectedCameraIndex = (_selectedCameraIndex + 1) % widget.cameras.length;
     _initCamera();
   }
 
+  // Simulation des détections pour valider le flux avant le modèle final
   void _toggleSimulationDetections() {
     setState(() {
       _simulationActive = !_simulationActive;
@@ -98,6 +105,7 @@ class _ScanScreenState extends State<ScanScreen> {
     });
   }
 
+  // Ouverture de l'écran de résultat (Go / No-Go)
   void _ouvrirResultatControle() {
     Navigator.push(
       context,
@@ -110,6 +118,7 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  // Sélection d'une image dans la galerie
   Future<void> _pickImageFromGallery() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null && mounted) {
@@ -129,7 +138,7 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget build(BuildContext context) {
     if (_errorMessage != null) {
       return Scaffold(
-        appBar: AppBar(title: const Text("Portique de Détection EPI")),
+        appBar: AppBar(title: const Text('Portique de Détection EPI')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -172,16 +181,16 @@ class _ScanScreenState extends State<ScanScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
+          // 1. Aperçu caméra
           CameraPreview(_controller!),
+
+          // 2. Cadre repère visuel
           Center(
             child: Container(
               width: MediaQuery.of(context).size.width * 0.8,
               height: MediaQuery.of(context).size.height * 0.6,
               decoration: BoxDecoration(
-                border: Border.all(
-                  color: Colors.white54,
-                  width: 2,
-                ),
+                border: Border.all(color: Colors.white54, width: 2),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: const Align(
@@ -200,11 +209,15 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ),
           ),
+
+          // 3. Calque de détection (boîtes englobantes)
           if (_detectionsActives.isNotEmpty)
             DetectionOverlay(
               detections: _detectionsActives,
               idsRequis: idsRequis,
             ),
+
+          // 4. Bandeau des EPI obligatoires requis
           Positioned(
             top: 16,
             left: 16,
@@ -224,6 +237,8 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ),
           ),
+
+          // 5. Boutons d'action en bas de l'écran
           Positioned(
             bottom: 24,
             left: 16,

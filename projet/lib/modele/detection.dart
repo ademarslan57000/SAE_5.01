@@ -1,3 +1,6 @@
+// Structure de données encapsulant une prédiction du modèle d'inférence :
+// identifiant de classe reconnue, indice de confiance statistique et coordonnées spatiales du rectangle.
+
 import 'dart:ui';
 
 class Detection {

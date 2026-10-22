@@ -1,3 +1,6 @@
+// Calque transparent utilisant un CustomPainter pour projeter les boîtes englobantes (bounding boxes)
+// et les étiquettes de score sur l'écran en convertissant les coordonnées normalisées du modèle en pixels.
+
 import 'package:flutter/material.dart';
 import '../../modele/detection.dart';
 

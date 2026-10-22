@@ -1,3 +1,6 @@
+// Modèle de données décrivant un équipement de protection (identifiant, libellé, icône)
+// et son statut obligatoire ou optionnel paramétré par le responsable.
+
 class Equipement {
   final String id;
   final String nom;

@@ -1,3 +1,5 @@
+// Contrôleur de navigation globale maintenant les trois vues en mémoire vive via un IndexedStack
+// et servant de source de vérité pour synchroniser la liste des EPI entre l'administration et le scanner.
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import '../modele/equipement.dart';
@@ -7,7 +9,6 @@ import 'historique/historique.dart';
 
 class NavigationScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
-
   const NavigationScreen({super.key, required this.cameras});
 
   @override
@@ -16,16 +17,55 @@ class NavigationScreen extends StatefulWidget {
 
 class _NavigationScreenState extends State<NavigationScreen> {
   int _currentIndex = 0;
-
-  final List<Equipement> _equipements =[
-    Equipement(id: 'helmet', nom: "Casque de chantier", icon: "🪖", isRequired: false),
-    Equipement(id: 'vest', nom: "Gilet haute visibilité", icon: "🦺", isRequired: false),
-    Equipement(id: 'gloves', nom: "Gants de protection", icon: "🧤", isRequired: false),
-    Equipement(id: 'boots', nom: "Chaussures de sécurité", icon: "🥾", isRequired: false),
-    Equipement(id: 'goggles', nom: "Lunettes de protection", icon: "🥽", isRequired: false),
-    Equipement(id: 'ears', nom: "Protection auditive", icon: "🎧", isRequired: false),
-    Equipement(id: 'harness', nom: "Harnais de sécurité", icon: "🧗", isRequired: false),
-    Equipement(id: 'mask', nom: "Masque respiratoire", icon: "😷", isRequired: false)
+  final List<Equipement> _equipements = [
+    Equipement(
+      id: 'helmet',
+      nom: "Casque de chantier",
+      icon: "🪖",
+      isRequired: true,
+    ),
+    Equipement(
+      id: 'vest',
+      nom: "Gilet haute visibilité",
+      icon: "🦺",
+      isRequired: true,
+    ),
+    Equipement(
+      id: 'gloves',
+      nom: "Gants de protection",
+      icon: "🧤",
+      isRequired: false,
+    ),
+    Equipement(
+      id: 'boots',
+      nom: "Chaussures de sécurité",
+      icon: "🥾",
+      isRequired: true,
+    ),
+    Equipement(
+      id: 'goggles',
+      nom: "Lunettes de protection",
+      icon: "🥽",
+      isRequired: false,
+    ),
+    Equipement(
+      id: 'ears',
+      nom: "Protection auditive",
+      icon: "🎧",
+      isRequired: false,
+    ),
+    Equipement(
+      id: 'harness',
+      nom: "Harnais de sécurité",
+      icon: "🧗",
+      isRequired: false,
+    ),
+    Equipement(
+      id: 'mask',
+      nom: "Masque respiratoire",
+      icon: "😷",
+      isRequired: false,
+    ),
   ];
 
   @override
@@ -40,7 +80,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
           ),
           AdminConfigScreen(
             equipements: _equipements,
-            onChanged: (updatedList){
+            onChanged: (updatedList) {
               setState(() {});
             },
           ),
@@ -49,7 +89,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (index){
+        onDestinationSelected: (index) {
           setState(() {
             _currentIndex = index;
           });

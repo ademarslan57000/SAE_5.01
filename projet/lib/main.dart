@@ -1,3 +1,6 @@
+// Point d'entrée de l'application : initialise le moteur Flutter, détecte les capteurs caméra disponibles
+// et configure le thème visuel sombre avant d'instancier l'écran de navigation principal.
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'vue/navigation.dart';
@@ -25,7 +28,7 @@ class EPISafetyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: Colors.amber, 
+        colorSchemeSeed: Colors.amber,
         brightness: Brightness.dark,
       ),
       home: NavigationScreen(cameras: cameras),
