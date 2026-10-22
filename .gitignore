@@ -11,3 +11,6 @@ __pycache__/
 # Sorties d'entraînement YOLO
 runs/
 *.cache
+
+# Variante générée par dataset/outils/derive_positives.py (copie de dataset/)
+dataset_positives/
