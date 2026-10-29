@@ -1,8 +1,10 @@
-// Écran de verdict Go / No-Go affichant l'accès autorisé (vert) ou refusé (rouge)
-// ainsi que la liste détaillée des équipements obligatoires détectés ou manquants.
+//écran de verdict Go / No-Go affichant l'accès autorisé (vert) ou refusé (rouge)
+//ainsi que la liste détaillée des équipements obligatoires détectés ou manquants.
 import 'package:flutter/material.dart';
 import '../../modele/equipement.dart';
 import '../../modele/detection.dart';
+import '../../modele/decision.dart';
+import '../../service/decision_service.dart';
 
 class ResultatScanScreen extends StatelessWidget {
   final List<Equipement> equipementsRequis;
@@ -16,16 +18,10 @@ class ResultatScanScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Map<String, Detection> mapDetections = {
-      for (var d in detections)
-        if (d.confidence >= 0.5) d.idEquipement: d,
-    };
-
-    final List<Equipement> manquants = equipementsRequis
-        .where((e) => !mapDetections.containsKey(e.id))
-        .toList();
-
-    final bool accesAutorise = manquants.isEmpty;
+    final ResultatDecision decision = decider(detections, equipementsRequis);
+    final Map<String, Detection> mapDetections = decision.detectes;
+    final List<Equipement> manquants = decision.manquants;
+    final bool accesAutorise = decision.accesAutorise;
     final Color couleurStatut =
         accesAutorise ? Colors.green.shade700 : Colors.red.shade700;
     final Color couleurFondCarte = accesAutorise
