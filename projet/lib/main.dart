@@ -1,20 +1,11 @@
-// Point d'entrée de l'application : initialise le moteur Flutter, détecte les capteurs caméra disponibles
+// Point d'entrée de l'application : initialise le moteur Flutter
 // et configure le thème visuel sombre avant d'instancier l'écran de navigation principal.
 
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
 import 'vue/navigation.dart';
 
-List<CameraDescription> cameras = [];
-
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    cameras = await availableCameras();
-  } on CameraException catch (e) {
-    debugPrint('Erreur lors de l\'initialisation des caméras : $e');
-  }
-
   runApp(const EPISafetyApp());
 }
 
@@ -31,7 +22,7 @@ class EPISafetyApp extends StatelessWidget {
         colorSchemeSeed: Colors.amber,
         brightness: Brightness.dark,
       ),
-      home: NavigationScreen(cameras: cameras),
+      home: const NavigationScreen(),
     );
   }
 }

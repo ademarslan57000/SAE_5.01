@@ -1,5 +1,6 @@
 // Vue centrale du portique affichant le flux vidéo de la caméra en temps réel,
 // superposant le calque graphique des détections et déclenchant le passage vers l'écran de résultat.
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,12 +10,12 @@ import 'detection_overlay.dart';
 import 'resultat_scan.dart';
 
 class ScanScreen extends StatefulWidget {
-  final List<CameraDescription> cameras;
+  final List<CameraDescription>? cameras;
   final List<Equipement> equipementsRequis;
 
   const ScanScreen({
     super.key,
-    required this.cameras,
+    this.cameras,
     required this.equipementsRequis,
   });
 
@@ -29,7 +30,6 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _isCameraReady = false;
   String? _errorMessage;
 
-  // Liste des détections actuellement affichées sur l'écran
   List<Detection> _detectionsActives = [];
   bool _simulationActive = false;
 
@@ -39,18 +39,32 @@ class _ScanScreenState extends State<ScanScreen> {
     _initCamera();
   }
 
-  // Initialisation de la caméra avec résolution moyenne
   Future<void> _initCamera() async {
-    if (widget.cameras.isEmpty) {
+    setState(() => _isCameraReady = false);
+
+    // 1. Récupère les caméras passées en paramètre, ou interroge directement l'appareil
+    List<CameraDescription> list = widget.cameras ?? [];
+    if (list.isEmpty) {
+      try {
+        list = await availableCameras();
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _errorMessage = "Erreur d'accès aux capteurs : $e");
+        return;
+      }
+    }
+
+    if (list.isEmpty) {
+      if (!mounted) return;
       setState(() => _errorMessage = "Aucune caméra détectée sur cet appareil.");
       return;
     }
 
-    setState(() => _isCameraReady = false);
     await _controller?.dispose();
 
+    // 2. Initialisation du capteur sélectionné
     _controller = CameraController(
-      widget.cameras[_selectedCameraIndex],
+      list[_selectedCameraIndex],
       ResolutionPreset.medium,
       enableAudio: false,
     );
@@ -63,49 +77,64 @@ class _ScanScreenState extends State<ScanScreen> {
         _errorMessage = null;
       });
     } on CameraException catch (e) {
+      if (!mounted) return;
       setState(() => _errorMessage = "Erreur caméra : ${e.description}");
     }
   }
 
-  // Bascule entre la caméra avant et arrière
   void _switchCamera() {
-    if (widget.cameras.length < 2) return;
-    _selectedCameraIndex = (_selectedCameraIndex + 1) % widget.cameras.length;
+    final list = widget.cameras;
+    if (list == null || list.length < 2) return;
+    _selectedCameraIndex = (_selectedCameraIndex + 1) % list.length;
     _initCamera();
   }
 
-  // Simulation des détections pour valider le flux avant le modèle final
+  // Active ou désactive les détections simulées en s'adaptant aux EPI requis
   void _toggleSimulationDetections() {
     setState(() {
       _simulationActive = !_simulationActive;
       if (_simulationActive) {
-        _detectionsActives = [
-          Detection(
-            idEquipement: 'helmet',
-            label: 'Casque',
-            confidence: 0.95,
-            boundingBox: const Rect.fromLTWH(0.32, 0.18, 0.36, 0.16),
-          ),
-          Detection(
-            idEquipement: 'vest',
-            label: 'Gilet HV',
-            confidence: 0.91,
-            boundingBox: const Rect.fromLTWH(0.24, 0.38, 0.52, 0.30),
-          ),
-          Detection(
-            idEquipement: 'boots',
-            label: 'Chaussures',
-            confidence: 0.87,
-            boundingBox: const Rect.fromLTWH(0.28, 0.72, 0.44, 0.12),
-          ),
-        ];
+        double topOffset = 0.18;
+        _detectionsActives = widget.equipementsRequis.map((equip) {
+          final det = Detection(
+            idEquipement: equip.id.toLowerCase(),
+            label: equip.nom,
+            confidence: 0.93,
+            boundingBox: Rect.fromLTWH(0.28, topOffset, 0.44, 0.18),
+          );
+          topOffset = (topOffset + 0.22).clamp(0.15, 0.75);
+          return det;
+        }).toList();
+
+        // Si aucun équipement n'est encore coché, détections par défaut
+        if (_detectionsActives.isEmpty) {
+          _detectionsActives = [
+            Detection(
+              idEquipement: 'helmet',
+              label: 'Casque',
+              confidence: 0.95,
+              boundingBox: const Rect.fromLTWH(0.32, 0.18, 0.36, 0.16),
+            ),
+            Detection(
+              idEquipement: 'vest',
+              label: 'Gilet HV',
+              confidence: 0.91,
+              boundingBox: const Rect.fromLTWH(0.24, 0.38, 0.52, 0.30),
+            ),
+            Detection(
+              idEquipement: 'boots',
+              label: 'Chaussures',
+              confidence: 0.87,
+              boundingBox: const Rect.fromLTWH(0.28, 0.72, 0.44, 0.12),
+            ),
+          ];
+        }
       } else {
         _detectionsActives = [];
       }
     });
   }
 
-  // Ouverture de l'écran de résultat (Go / No-Go)
   void _ouvrirResultatControle() {
     Navigator.push(
       context,
@@ -118,7 +147,6 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  // Sélection d'une image dans la galerie
   Future<void> _pickImageFromGallery() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
     if (image != null && mounted) {
@@ -159,13 +187,13 @@ class _ScanScreenState extends State<ScanScreen> {
     }
 
     final Set<String> idsRequis =
-        widget.equipementsRequis.map((e) => e.id).toSet();
+        widget.equipementsRequis.map((e) => e.id.toLowerCase()).toSet();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Portique de Détection EPI'),
         actions: [
-          if (widget.cameras.length > 1)
+          if ((widget.cameras?.length ?? 0) > 1)
             IconButton(
               icon: const Icon(Icons.flip_camera_ios),
               tooltip: 'Changer de caméra',
@@ -181,28 +209,30 @@ class _ScanScreenState extends State<ScanScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Aperçu caméra
+          // 1. Flux vidéo caméra Flutter
           CameraPreview(_controller!),
 
           // 2. Cadre repère visuel
           Center(
-            child: Container(
-              width: MediaQuery.of(context).size.width * 0.8,
-              height: MediaQuery.of(context).size.height * 0.6,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white54, width: 2),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text(
-                    'Placez la personne dans le cadre',
-                    style: TextStyle(
-                      color: Colors.white,
-                      backgroundColor: Colors.black54,
-                      fontWeight: FontWeight.bold,
+            child: IgnorePointer(
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.8,
+                height: MediaQuery.of(context).size.height * 0.6,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white54, width: 2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Align(
+                  alignment: Alignment.topCenter,
+                  child: Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Text(
+                      'Placez la personne dans le cadre',
+                      style: TextStyle(
+                        color: Colors.white,
+                        backgroundColor: Colors.black54,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -210,11 +240,13 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-          // 3. Calque de détection (boîtes englobantes)
+          // 3. Calque de dessin des boîtes (vert si requis, bleu si facultatif)
           if (_detectionsActives.isNotEmpty)
-            DetectionOverlay(
-              detections: _detectionsActives,
-              idsRequis: idsRequis,
+            IgnorePointer(
+              child: DetectionOverlay(
+                detections: _detectionsActives,
+                idsRequis: idsRequis,
+              ),
             ),
 
           // 4. Bandeau des EPI obligatoires requis
@@ -238,7 +270,7 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-          // 5. Boutons d'action en bas de l'écran
+          // 5. Boutons de simulation et de verdict
           Positioned(
             bottom: 24,
             left: 16,

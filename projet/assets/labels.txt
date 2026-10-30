@@ -1,0 +1,8 @@
+helmet
+vest
+gloves
+boots
+goggles
+ears
+harness
+mask

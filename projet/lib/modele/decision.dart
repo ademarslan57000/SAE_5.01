@@ -1,4 +1,4 @@
-//résultat d'une décision d'accès : équipements détectés et manquants.
+  //résultat d'une décision d'accès : équipements détectés et manquants.
 
 import 'detection.dart';
 import 'equipement.dart';

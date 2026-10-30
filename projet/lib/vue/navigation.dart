@@ -1,15 +1,15 @@
-// Contrôleur de navigation globale maintenant les trois vues en mémoire vive via un IndexedStack
-// et servant de source de vérité pour synchroniser la liste des EPI entre l'administration et le scanner.
+// Contrôleur de navigation globale chargeant les classes d'EPI depuis labels.txt
+// et synchronisant la liste des équipements entre l'administration et le scanner.
+
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import '../modele/equipement.dart';
 import 'scan/scanner.dart';
 import 'admin/admin.dart';
 import 'historique/historique.dart';
 
 class NavigationScreen extends StatefulWidget {
-  final List<CameraDescription> cameras;
-  const NavigationScreen({super.key, required this.cameras});
+  const NavigationScreen({super.key});
 
   @override
   State<NavigationScreen> createState() => _NavigationScreenState();
@@ -17,65 +17,66 @@ class NavigationScreen extends StatefulWidget {
 
 class _NavigationScreenState extends State<NavigationScreen> {
   int _currentIndex = 0;
-  final List<Equipement> _equipements = [
-    Equipement(
-      id: 'helmet',
-      nom: "Casque de chantier",
-      icon: "🪖",
-      isRequired: true,
-    ),
-    Equipement(
-      id: 'vest',
-      nom: "Gilet haute visibilité",
-      icon: "🦺",
-      isRequired: true,
-    ),
-    Equipement(
-      id: 'gloves',
-      nom: "Gants de protection",
-      icon: "🧤",
-      isRequired: false,
-    ),
-    Equipement(
-      id: 'boots',
-      nom: "Chaussures de sécurité",
-      icon: "🥾",
-      isRequired: true,
-    ),
-    Equipement(
-      id: 'goggles',
-      nom: "Lunettes de protection",
-      icon: "🥽",
-      isRequired: false,
-    ),
-    Equipement(
-      id: 'ears',
-      nom: "Protection auditive",
-      icon: "🎧",
-      isRequired: false,
-    ),
-    Equipement(
-      id: 'harness',
-      nom: "Harnais de sécurité",
-      icon: "🧗",
-      isRequired: false,
-    ),
-    Equipement(
-      id: 'mask',
-      nom: "Masque respiratoire",
-      icon: "😷",
-      isRequired: false,
-    ),
-  ];
+  List<Equipement> _equipements = [];
+  bool _isLoading = true;
+
+  static const Map<String, (String, String)> _labelsMetadonnees = {
+    'helmet': ('Casque de chantier', '🪖'),
+    'vest': ('Gilet haute visibilité', '🦺'),
+    'gloves': ('Gants de protection', '🧤'),
+    'boots': ('Chaussures de sécurité', '🥾'),
+    'goggles': ('Lunettes de protection', '𥽌'),
+    'ears': ('Protection auditive', '🎧'),
+    'harness': ('Harnais de sécurité', '🧗'),
+    'mask': ('Masque respiratoire', '😷'),
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerLabels();
+  }
+
+  Future<void> _chargerLabels() async {
+    try {
+      final String contenu = await rootBundle.loadString('assets/labels.txt');
+      final List<String> lignes = contenu
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+
+      setState(() {
+        _equipements = lignes.map((label) {
+          final meta = _labelsMetadonnees[label];
+          return Equipement(
+            id: label,
+            nom: meta?.$1 ?? label,
+            icon: meta?.$2 ?? '🛡️',
+            isRequired: label == 'helmet' || label == 'vest' || label == 'boots',
+          );
+        }).toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Erreur lors du chargement de labels.txt : $e");
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
         children: [
           ScanScreen(
-            cameras: widget.cameras,
             equipementsRequis: _equipements.where((e) => e.isRequired).toList(),
           ),
           AdminConfigScreen(
