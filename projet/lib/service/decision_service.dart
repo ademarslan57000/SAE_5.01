@@ -5,7 +5,7 @@ import '../modele/decision.dart';
 import '../modele/detection.dart';
 import '../modele/equipement.dart';
 
-const double seuilConfiance = 0.5;
+const double seuilConfiance = 0.6;
 
 //ne garde que les détections assez fiables. Si un même équipement est
 //détecté plusieurs fois, on garde celle qui a la meilleure confiance.

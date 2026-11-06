@@ -12,8 +12,6 @@ class LabelsService {
     'boots': ('Chaussures de sécurité', '🥾'),
     'goggles': ('Lunettes de protection', '🥽'),
     'ears': ('Protection auditive', '🎧'),
-    'harness': ('Harnais de sécurité', '🧗'),
-    'mask': ('Masque respiratoire', '😷'),
     'person': ('Personne', '👷'),
   };
 
