@@ -1,0 +1,12 @@
+# Photos maison V2 d'une personne jamais vue à l'entraînement.
+train: images/test
+val: images/test
+test: images/test
+nc: 6
+names:
+  0: person
+  1: helmet
+  2: vest
+  3: gloves
+  4: boots
+  5: goggles

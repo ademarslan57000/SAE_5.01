@@ -1,6 +1,6 @@
 """Fusionne dataset_positives (internet + ancien maison, 6 classes) et maison_v2 en un seul dossier.
 
-Résultat : dataset_run4/ à la racine du dépôt, autonome, prêt à zipper pour Colab.
+Résultat : dataset/maison_v2/dataset_run4/, autonome, versionné sur Git pour Colab.
   images|labels/train  = dataset_positives/train + maison_v2/train (préfixe maisonv2_)
   images|labels/val    = dataset_positives/val   (identique au run3)
   images|labels/test   = dataset_positives/test  (identique au run3)
@@ -16,7 +16,8 @@ from pathlib import Path
 
 ORDRE = ["person", "helmet", "vest", "gloves", "boots", "goggles"]
 racine = Path(__file__).resolve().parents[2]
-internet, maison, sortie = racine / "dataset_positives", racine / "dataset" / "maison_v2", racine / "dataset_run4"
+internet, maison = racine / "dataset_positives", racine / "dataset" / "maison_v2"
+sortie = maison / "dataset_run4"
 
 if sortie.exists():
     shutil.rmtree(sortie)

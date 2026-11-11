@@ -40,19 +40,29 @@ Faites à la main dans `labels/train/` le 11/11 (vérifiées à l'œil) : un rel
 
 ## Fusionner et entraîner le run4 (Colab)
 
-`python dataset/outils/fusionner_run4.py` crée `dataset_run4/` à la racine du dépôt :
-le train d'internet + les 36 photos (préfixe `maisonv2_`), le val et le test du run3
-inchangés, et `test_maison_v2/` avec son propre `data.yaml`. Zipper ce dossier et le
-dézipper dans `/content` sur Colab.
+Le dataset fusionné est **déjà dans le dépôt** : `dataset/maison_v2/dataset_run4/`.
 
-Mêmes réglages que le run3, seul `data` change :
+| Dossier | Images | Contenu |
+|---|---|---|
+| `images/train` | 1 197 | 1 161 d'internet + 36 photos maison (préfixe `maisonv2_`) |
+| `images/val` | 149 | identique au run3 |
+| `images/test` | 148 | identique au run3 |
+| `test_maison_v2/` | 7 | la personne gardée pour le test, avec son `data.yaml` |
+
+Il a été produit par `python dataset/outils/fusionner_run4.py` (à relancer si les
+annotations changent). Les chemins du `data.yaml` sont relatifs : il marche où que
+soit le dépôt. Sur Colab, après avoir cloné le dépôt dans `/content/SAE_5.01` :
 
 ```python
+!ls /content/SAE_5.01/dataset/maison_v2/dataset_run4/images/train | wc -l   # doit afficher 1197
+
 from ultralytics import YOLO
 model = YOLO("yolo11n.pt")
-model.train(data="/content/dataset_run4/data.yaml", patience=20, device=0,
+model.train(data="/content/SAE_5.01/dataset/maison_v2/dataset_run4/data.yaml", patience=20, device=0,
             project="/content/drive/MyDrive/Modele_EPI", name="run4_positives_maisonV2")
 ```
+
+Mêmes réglages que le run3, seul `data` change.
 
 Réglages par défaut conservés comme au run3 : `epochs=100`, `imgsz=640`, `batch=16`, `seed=0`.
 
@@ -63,7 +73,7 @@ Réglages par défaut conservés comme au run3 : `epochs=100`, `imgsz=640`, `bat
 ```
 python dataset/outils/compare_runs.py \
     --run-a dataset/entrainements/run3_positives_yolo11n --data-a dataset_positives/data.yaml --nom-a "run3" \
-    --run-b dataset/entrainements/run4_positives_maisonV2 --data-b dataset_run4/data.yaml --nom-b "run4 (+ maison V2)" \
+    --run-b dataset/entrainements/run4_positives_maisonV2 --data-b dataset/maison_v2/dataset_run4/data.yaml --nom-b "run4 (+ maison V2)" \
     --verite dataset/data.yaml \
     --paires no_helmet:helmet no_vest:vest no_gloves:gloves no_boots:boots no_goggle:goggles \
     --sortie dataset/evaluations/comparatif_run3_vs_run4.md
@@ -73,7 +83,7 @@ python dataset/outils/compare_runs.py \
 
 ```python
 YOLO("dataset/entrainements/run4_positives_maisonV2/weights/best.pt").val(
-    data="dataset_run4/test_maison_v2/data.yaml", split="test")
+    data="dataset/maison_v2/dataset_run4/test_maison_v2/data.yaml", split="test")
 ```
 
 ## Référence : run3 sur le test maison V2
