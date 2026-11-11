@@ -23,12 +23,12 @@ class BaseDonnees {
   }
 
   static Future _onConfigure(Database db) async {
-    // Activation des clés étrangères pour que ON DELETE CASCADE fonctionne[cite: 16, 18]
+    //Activation des clés étrangères pour que ON DELETE CASCADE fonctionne
     await db.execute('PRAGMA foreign_keys = ON');
   }
 
   static Future _onCreate(Database db, int version) async {
-    // 1. QUI : l'entreprise, ses chantiers, ses équipes, ses personnes[cite: 14]
+    //QUI : l'entreprise, ses chantiers, ses équipes, ses personnes
     await db.execute('''
       CREATE TABLE entreprise (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +65,7 @@ class BaseDonnees {
       )
     ''');
 
-    // 2. QUOI : les EPI, et ceux qui sont obligatoires sur chaque chantier[cite: 14, 15]
+    //QUOI : les EPI, et ceux qui sont obligatoires sur chaque chantier
     await db.execute('''
       CREATE TABLE equipement (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,7 +85,7 @@ class BaseDonnees {
       )
     ''');
 
-    // 3. L'HISTORIQUE : un passage, puis une ligne par EPI obligatoire[cite: 15]
+    //L'HISTORIQUE : un passage, puis une ligne par EPI obligatoire
     await db.execute('''
       CREATE TABLE scan (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,7 +109,7 @@ class BaseDonnees {
       )
     ''');
 
-    // 4. LA PERSONNALISATION (A6, A7)[cite: 15]
+    //LA PERSONNALISATION (A6, A7)
     await db.execute('''
       CREATE TABLE photo_capture (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,11 +131,11 @@ class BaseDonnees {
       )
     ''');
 
-    // Données de départ, insérées au premier lancement[cite: 15, 16]
+    //Données de départ, insérées au premier lancement
     await db.insert('entreprise', {'nom': 'BTP Démo'});
     await db.insert('chantier', {'entreprise_id': 1, 'nom': 'Chantier IUT Metz'});
     
-    // Insertion des équipements de base[cite: 15, 16]
+    //Insertion des équipements de base
     final equipementsBase = [
       {'code_classe': 'helmet', 'nom_affiche': 'Casque de chantier', 'icone': '🪖'},
       {'code_classe': 'vest', 'nom_affiche': 'Gilet haute visibilité', 'icone': '🦺'},
