@@ -35,3 +35,56 @@ ResultatDecision decider(
       equipementsRequis.where((e) => !retenues.containsKey(e.id)).toList();
   return ResultatDecision(detectes: retenues, manquants: manquants);
 }
+
+class StabilisateurDecision {
+  final int maxFrames;
+  final int minConfirmations;
+  
+  //historique des détections retenues pour les dernières frames
+  final buffer = [];
+
+  //par défaut : on analyse sur 5 images, il faut que l'EPI soit vu sur au moins 3 d'entre elles.
+  StabilisateurDecision({this.maxFrames = 5, this.minConfirmations = 3});
+
+  ResultatDecision deciderStable(
+    List<Detection> detections,
+    List<Equipement> equipementsRequis, {
+    double seuil = seuilConfiance,
+  }) {
+    //filtrer les détections de la frame actuelle
+    final retenues = detectionsValides(detections, seuil: seuil);
+
+    //mettre à jour le buffer (ajouter la nouvelle, supprimer la plus ancienne)
+    buffer.add(retenues);
+    if (buffer.length > maxFrames) {
+      buffer.removeAt(0);
+    }
+
+    //calculer le consensus sur l'ensemble du buffer
+    Map<String, Detection> detectesStables = {};
+    
+    for (var equipement in equipementsRequis) {
+      int apparitions = 0;
+      Detection? derniereDetection;
+
+      for (var frame in buffer) {
+        if (frame.containsKey(equipement.id)) {
+          apparitions++;
+          derniereDetection = frame[equipement.id]; //on garde la dernière
+        }
+      }
+
+      //si l'EPI est apparu suffisamment de fois dans les dernières frames, on le valide
+      if (apparitions >= minConfirmations && derniereDetection != null) {
+        detectesStables[equipement.id] = derniereDetection;
+      }
+    }
+
+    //déduire ce qui manque réellement (de manière stable)
+    final manquants = equipementsRequis
+        .where((e) => !detectesStables.containsKey(e.id))
+        .toList();
+
+    return ResultatDecision(detectes: detectesStables, manquants: manquants);
+  }
+}

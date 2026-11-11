@@ -17,3 +17,4 @@ class ResultatDecision {
 
   bool get accesAutorise => manquants.isEmpty;
 }
+

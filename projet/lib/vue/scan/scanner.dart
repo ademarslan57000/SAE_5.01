@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import '../../modele/equipement.dart';
 import '../../modele/detection.dart';
+import '../../service/decision_service.dart'; 
+import '../../service/historique_service.dart'; 
 import 'detection_overlay.dart';
 import 'resultat_scan.dart';
 
@@ -26,6 +28,9 @@ class _ScanScreenState extends State<ScanScreen> {
   List<Detection> _detections = [];
   bool _simulerCasque = false;
   bool _simulerGilet = false;
+
+
+  final _stabilisateur = StabilisateurDecision(maxFrames: 5, minConfirmations: 3);
 
   @override
   void initState() {
@@ -60,10 +65,6 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  bool _isDetected(Equipement eq) => _detections.any(
-      (d) => d.idEquipement.toLowerCase() == eq.id.toLowerCase() ||
-             d.label.toLowerCase().contains(eq.nom.toLowerCase()));
-
   void _updateSimulations() {
     setState(() {
       _detections = [
@@ -92,21 +93,25 @@ class _ScanScreenState extends State<ScanScreen> {
       return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
     }
 
-    final bool conforme = widget.equipementsRequis.isNotEmpty &&
-        widget.equipementsRequis.every(_isDetected);
+
+    final resultat = _stabilisateur.deciderStable(_detections, widget.equipementsRequis);
+    final bool conforme = resultat.accesAutorise;
+
+
+    bool isDetectedStable(Equipement eq) => resultat.detectes.containsKey(eq.id);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Caméra
+          //Caméra
           if (_controller?.value.isInitialized ?? false)
             CameraPreview(_controller!)
           else
             const ColoredBox(color: Colors.black),
 
-          // 2. Boîtes de détection
+          //Boîtes de détection
           if (_detections.isNotEmpty)
             IgnorePointer(
               child: DetectionOverlay(
@@ -115,7 +120,7 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ),
 
-          // 3. Viseur (Coins)
+          //Viseur (Coins)
           Center(
             child: IgnorePointer(
               child: SizedBox(
@@ -126,7 +131,7 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-          // 4. Header (Boutons retour / flip)
+          //Header (Boutons retour / flip)
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
@@ -141,19 +146,18 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-          // 5. Checklist flottante d'EPI
           Positioned(
             top: MediaQuery.of(context).padding.top + 65,
             left: 16,
             right: 16,
             child: _StatusCard(
               equipements: widget.equipementsRequis,
-              isDetected: _isDetected,
+              isDetected: isDetectedStable, 
               conforme: conforme,
             ),
           ),
 
-          // 6. Commandes bas d'écran (Test + Bouton Valider)
+          //Commandes bas d'écran (Test + Bouton Valider)
           Positioned(
             bottom: 24,
             left: 20,
@@ -188,15 +192,27 @@ class _ScanScreenState extends State<ScanScreen> {
                       conforme ? 'Valider le passage' : 'Vérifier l\'accès',
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ResultatScanScreen(
-                          equipementsRequis: widget.equipementsRequis,
-                          detections: _detections,
-                        ),
-                      ),
-                    ),
+                    onPressed: () async {
+                      await HistoriqueService.enregistrerPassage(
+                      resultat,
+                      widget.equipementsRequis,
+                      1, 
+                      0.6, 
+                      '6-classes-v1',
+                      );
+                      
+                      if (mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ResultatScanScreen(
+                              equipementsRequis: widget.equipementsRequis,
+                              detections: _detections,
+                            ),
+                          ),
+                        );
+                      }
+                    },
                   ),
                 ),
               ],
@@ -208,7 +224,7 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 }
 
-// Composant : Bandeau d'état des EPI
+
 class _StatusCard extends StatelessWidget {
   final List<Equipement> equipements;
   final bool Function(Equipement) isDetected;
@@ -268,7 +284,6 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-// Bouton circulaire en transparence
 class _RoundButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -283,7 +298,6 @@ class _RoundButton extends StatelessWidget {
   }
 }
 
-// Mini bouton de test
 class _TagButton extends StatelessWidget {
   final String label;
   final bool active;
@@ -301,7 +315,6 @@ class _TagButton extends StatelessWidget {
   }
 }
 
-// Dessin des 4 coins du cadre de visée
 class _ViseurPainter extends CustomPainter {
   final Color color;
   _ViseurPainter(this.color);

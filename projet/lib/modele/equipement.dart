@@ -3,6 +3,7 @@
 
 class Equipement {
   final String id;
+  final int? idBase;
   final String nom;
   final String icon;
   bool isRequired;
@@ -10,6 +11,7 @@ class Equipement {
   Equipement({
     required this.id,
     required this.nom,
+    this.idBase,
     required this.icon,
     this.isRequired = false,
   });
