@@ -1,7 +1,7 @@
 task: detect
 mode: train
 model: yolo11n.pt
-data: /content/dataset/dataset_maison_v2/data_test.yaml
+data: /content/dataset/dataset_run4/data.yaml
 epochs: 100
 time: null
 patience: 50
@@ -13,7 +13,7 @@ cache: false
 device: "0"
 workers: 8
 project: /content/drive/MyDrive/Modele_EPI
-name: run__positives_dataset_maison_V2-4
+name: run_positives_dataset_maison_V2
 exist_ok: false
 pretrained: true
 cls_remap: true
@@ -112,4 +112,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: tracktrack.yaml
-save_dir: /content/drive/MyDrive/Modele_EPI/run__positives_dataset_maison_V2-4
+save_dir: /content/drive/MyDrive/Modele_EPI/run_positives_dataset_maison_V2
