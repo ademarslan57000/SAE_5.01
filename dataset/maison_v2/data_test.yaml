@@ -1,0 +1,13 @@
+# Test maison V2 : la personne tm_37 à tm_44, jamais vue à l'entraînement.
+# Évaluation : YOLO('best.pt').val(data='dataset/maison_v2/data_test.yaml', split='test')
+train: images/train
+val: images/test
+test: images/test
+nc: 6
+names:
+  0: person
+  1: helmet
+  2: vest
+  3: gloves
+  4: boots
+  5: goggles
