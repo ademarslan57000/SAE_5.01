@@ -9,6 +9,8 @@ import '../../modele/detection.dart';
 import '../../modele/decision.dart';
 import '../../service/decision_service.dart';
 import '../../service/historique_service.dart';
+import '../../service/auth_service.dart';
+import '../accueil.dart';
 import '../historique/historique.dart';
 import 'detection_overlay.dart';
 import 'resultat_scan.dart';
@@ -90,19 +92,19 @@ class _ScanScreenState extends State<ScanScreen> {
 
   void _switchCamera() {
     if (_cameras.length < 2) return;
-    
+
     final currentDirection = _cameras[_camIndex].lensDirection;
     final targetDirection = currentDirection == CameraLensDirection.back
         ? CameraLensDirection.front
         : CameraLensDirection.back;
 
     final newIndex = _cameras.indexWhere((c) => c.lensDirection == targetDirection);
-    
+
     setState(() {
       _isReady = false;
       _camIndex = newIndex != -1 ? newIndex : (_camIndex + 1) % _cameras.length;
     });
-    
+
     _initCamera();
   }
 
@@ -124,7 +126,7 @@ class _ScanScreenState extends State<ScanScreen> {
             boundingBox: const Rect.fromLTWH(0.26, 0.38, 0.48, 0.32),
           ),
       ];
-      
+
       for (int i = 0; i < 3; i++) {
         _stabilisateur.deciderStable(_detections, widget.equipementsRequis);
       }
@@ -190,7 +192,7 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-          // 4. Header (Retour, FPS, Historique, Bascule Caméra)
+          // 4. Header (Déconnexion/Retour, FPS, Historique, Bascule Caméra)
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
@@ -198,8 +200,18 @@ class _ScanScreenState extends State<ScanScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _RoundButton(icon: Icons.arrow_back, onTap: () => Navigator.pop(context)),
-                
+                _RoundButton(
+                  icon: Icons.arrow_back,
+                  onTap: () {
+                    AuthService.utilisateurCourant = null;
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AccueilScreen()),
+                      (Route<dynamic> route) => false,
+                    );
+                  },
+                ),
+
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
@@ -271,8 +283,8 @@ class _ScanScreenState extends State<ScanScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                
-                // BOUTON DE VALIDATION (Protégé contre les bugs de caméra)
+
+                // Bouton de validation (protégé contre les blocages caméra)
                 SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -288,56 +300,58 @@ class _ScanScreenState extends State<ScanScreen> {
                       _isSaving ? 'Sauvegarde...' : (conforme ? 'Valider le passage' : 'Vérifier l\'accès'),
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
-                    
-                    onPressed: _isSaving ? null : () async {
-                      setState(() => _isSaving = true);
-                      try {
-                        String? rawPath;
-                        
-                        // Sécurité anti-blocage : on ignore la capture si elle prend plus de 800ms
-                        try {
-                          if (!kIsWeb && _controller != null && _controller!.value.isInitialized) {
-                            final photo = await _controller!.takePicture().timeout(const Duration(milliseconds: 800));
-                            rawPath = photo.path;
-                          }
-                        } catch (e) {
-                          debugPrint("Caméra trop lente ou erreur ignorée");
-                        }
+                    onPressed: _isSaving
+                        ? null
+                        : () async {
+                            setState(() => _isSaving = true);
+                            try {
+                              String? rawPath;
 
-                        final idsRequis = widget.equipementsRequis.map((e) => e.id.toLowerCase()).toSet();
-                        
-                        final savedImagePath = await HistoriqueService.sauvegarderImageAvecBoites(
-                          rawImagePath: rawPath,
-                          detections: _detections,
-                          idsRequis: idsRequis,
-                        );
+                              // Sécurité anti-blocage : ignore la capture si elle dépasse 800 ms
+                              try {
+                                if (!kIsWeb && _controller != null && _controller!.value.isInitialized) {
+                                  final photo = await _controller!.takePicture().timeout(const Duration(milliseconds: 800));
+                                  rawPath = photo.path;
+                                }
+                              } catch (e) {
+                                debugPrint("Caméra trop lente ou erreur ignorée : $e");
+                              }
 
-                        await HistoriqueService.enregistrerPassage(
-                          resultat,
-                          widget.equipementsRequis,
-                          1, 
-                          0.6, 
-                          '6-classes-v1',
-                          cheminImage: savedImagePath,
-                        );
+                              final idsRequis = widget.equipementsRequis.map((e) => e.id.toLowerCase()).toSet();
 
-                        if (mounted) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ResultatScanScreen(
-                                equipementsRequis: widget.equipementsRequis,
+                              final savedImagePath = await HistoriqueService.sauvegarderImageAvecBoites(
+                                rawImagePath: rawPath,
                                 detections: _detections,
-                              ),
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        debugPrint("Erreur de sauvegarde : $e");
-                      } finally {
-                        if (mounted) setState(() => _isSaving = false);
-                      }
-                    },
+                                idsRequis: idsRequis,
+                              );
+
+                              await HistoriqueService.enregistrerPassage(
+                                resultat,
+                                widget.equipementsRequis,
+                                1,
+                                0.6,
+                                '6-classes-v1',
+                                cheminImage: savedImagePath,
+                                utilisateurId: AuthService.utilisateurCourant?.id,
+                              );
+
+                              if (mounted) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ResultatScanScreen(
+                                      equipementsRequis: widget.equipementsRequis,
+                                      detections: _detections,
+                                    ),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              debugPrint("Erreur de sauvegarde : $e");
+                            } finally {
+                              if (mounted) setState(() => _isSaving = false);
+                            }
+                          },
                   ),
                 ),
               ],
@@ -372,8 +386,10 @@ class _StatusCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('ÉQUIPEMENTS REQUIS', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                  Text(conforme ? 'CONFORME' : 'NON CONFORME',
-                      style: TextStyle(color: conforme ? Colors.greenAccent : Colors.orangeAccent, fontSize: 11, fontWeight: FontWeight.bold)),
+                  Text(
+                    conforme ? 'CONFORME' : 'NON CONFORME',
+                    style: TextStyle(color: conforme ? Colors.greenAccent : Colors.orangeAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -445,7 +461,10 @@ class _ViseurPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = color..strokeWidth = 2.5..style = PaintingStyle.stroke;
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
     const l = 24.0;
     canvas.drawLine(Offset.zero, const Offset(l, 0), p);
     canvas.drawLine(Offset.zero, const Offset(0, l), p);
