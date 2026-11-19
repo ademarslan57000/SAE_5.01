@@ -62,7 +62,6 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   assets:
-    - assets/yolo11n.tflite
     - assets/labels.txt
     - assets/best.tflite
 

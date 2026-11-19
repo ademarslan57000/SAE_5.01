@@ -34,6 +34,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   final TfliteService _tfliteService = TfliteService();
   bool _isDetecting = false;
+  DateTime _derniereAnalyse = DateTime.fromMillisecondsSinceEpoch(0);
   double _realFps = 0.0;
 
   List<Detection> _detections = [];
@@ -106,28 +107,37 @@ class _ScanScreenState extends State<ScanScreen> {
 
     _controller!.startImageStream((CameraImage image) {
       if (_isDetecting || _isSaving || !mounted) return;
+      // On analyse au plus une image toutes les 200 ms : le modèle n'a pas besoin
+      // de toutes les images de la caméra, et l'interface reste fluide.
+      final maintenant = DateTime.now();
+      if (maintenant.difference(_derniereAnalyse).inMilliseconds < 200) return;
+      _derniereAnalyse = maintenant;
       _isDetecting = true;
 
-      final sw = Stopwatch()..start();
-      final resultats = _tfliteService.detecterSurFrame(
-        image,
-        sensorOrientation: cam.sensorOrientation,
-        isFrontCamera: isFront,
-        seuilConfiance: seuilConfiance,
-      );
-      sw.stop();
+      try {
+        final sw = Stopwatch()..start();
+        final resultats = _tfliteService.detecterSurFrame(
+          image,
+          sensorOrientation: cam.sensorOrientation,
+          isFrontCamera: isFront,
+          seuilConfiance: seuilConfiance,
+        );
+        sw.stop();
 
-      if (mounted) {
-        final double fps = sw.elapsedMilliseconds > 0
-            ? (1000.0 / sw.elapsedMilliseconds).clamp(1.0, 60.0)
-            : 30.0;
-        setState(() {
-          _detections = resultats;
-          _realFps = fps;
-        });
+        if (mounted) {
+          final double fps = sw.elapsedMilliseconds > 0
+              ? (1000.0 / sw.elapsedMilliseconds).clamp(1.0, 60.0)
+              : 30.0;
+          setState(() {
+            _detections = resultats;
+            _realFps = fps;
+          });
+        }
+      } catch (e) {
+        debugPrint('Erreur analyse image : $e');
+      } finally {
+        _isDetecting = false;
       }
-
-      _isDetecting = false;
     });
   }
 

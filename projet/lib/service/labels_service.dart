@@ -23,6 +23,8 @@ class LabelsService {
           .split('\n')
           .map((l) => l.trim())
           .where((l) => l.isNotEmpty)
+          // 'person' sert à savoir qu'il y a quelqu'un, ce n'est pas un EPI
+          .where((l) => l.toLowerCase() != 'person')
           .toList();
 
       return lignes.map((labelId) {

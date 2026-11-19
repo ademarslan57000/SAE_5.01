@@ -1,34 +1,57 @@
+// Service d'inférence TFLite : charge le modèle YOLO11n exporté par Ultralytics,
+// prépare chaque image de la caméra (rotation, letterbox, normalisation) dans un
+// tampon de nombres, lance le modèle et décode ses sorties en détections dont les
+// coordonnées sont normalisées entre 0 et 1 par rapport à l'image redressée.
+
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 import '../modele/detection.dart';
+
+/// Géométrie du letterbox appliqué à une image, pour remettre les boîtes
+/// du modèle dans le repère de l'image d'origine.
+class _Cadre {
+  final double echelle; // facteur de redimensionnement image -> entrée du modèle
+  final int padX; // bandes grises ajoutées à gauche (en pixels du modèle)
+  final int padY; // bandes grises ajoutées en haut
+  final int largeur; // dimensions de l'image redressée (après rotation)
+  final int hauteur;
+
+  const _Cadre(this.echelle, this.padX, this.padY, this.largeur, this.hauteur);
+}
 
 class TfliteService {
   Interpreter? _interpreter;
   List<String> _labels = [];
+
   int _inputSize = 640;
-  bool _isQuantized = false;
+  bool _nchw = true; // [1, 3, 640, 640] (export Ultralytics) ou [1, 640, 640, 3]
+  int _nbCanaux = 0; // 4 coordonnées + 1 score par classe (10 pour 6 classes)
+  int _nbBoites = 0; // 8400 boîtes candidates pour une entrée 640x640
+  bool _sortieTransposee = false; // [1, 8400, 10] au lieu de [1, 10, 8400]
+
+  Float32List _entree = Float32List(0);
+  Float32List _sortie = Float32List(0);
   bool _isLoaded = false;
 
   bool get isLoaded => _isLoaded;
 
   static const Map<String, String> _nomsAffichage = {
+    'person': 'Personne',
     'helmet': 'Casque',
     'vest': 'Gilet HV',
     'gloves': 'Gants',
     'boots': 'Chaussures',
     'goggles': 'Lunettes',
-    'ears': 'Casque audio',
-    'harness': 'Harnais',
-    'mask': 'Masque',
-    'person': 'Personne',
   };
 
-  /// Charge le modèle TFLite v2 et les classes depuis assets/
+  /// Charge le modèle et la liste des classes.
+  /// labels.txt doit contenir les classes DANS L'ORDRE DU MODÈLE, une par ligne
+  /// (person, helmet, vest, gloves, boots, goggles pour le run 4).
   Future<bool> chargerModele({
     String modelAsset = 'assets/best.tflite',
     String labelsAsset = 'assets/labels.txt',
@@ -37,9 +60,19 @@ class TfliteService {
       final options = InterpreterOptions()..threads = 4;
       _interpreter = await Interpreter.fromAsset(modelAsset, options: options);
 
-      final inputTensor = _interpreter!.getInputTensor(0);
-      _inputSize = inputTensor.shape[1]; // ex: 640 ou 320
-      _isQuantized = inputTensor.type == TensorType.uint8;
+      // Forme de l'entrée : Ultralytics exporte en [1, 3, 640, 640] (couleurs d'abord).
+      final inShape = _interpreter!.getInputTensor(0).shape;
+      _nchw = inShape[1] == 3;
+      _inputSize = _nchw ? inShape[2] : inShape[1];
+
+      // Forme de la sortie : [1, 4 + nbClasses, 8400].
+      final outShape = _interpreter!.getOutputTensor(0).shape;
+      _sortieTransposee = outShape[1] > outShape[2];
+      _nbCanaux = _sortieTransposee ? outShape[2] : outShape[1];
+      _nbBoites = _sortieTransposee ? outShape[1] : outShape[2];
+
+      _entree = Float32List(_inputSize * _inputSize * 3);
+      _sortie = Float32List(_nbCanaux * _nbBoites);
 
       final contenuLabels = await rootBundle.loadString(labelsAsset);
       _labels = contenuLabels
@@ -48,9 +81,21 @@ class TfliteService {
           .where((l) => l.isNotEmpty)
           .toList();
 
+      // Sécurité : si labels.txt ne correspond pas au modèle, chaque détection
+      // porterait un faux nom. On refuse plutôt que d'afficher n'importe quoi.
+      if (_labels.length != _nbCanaux - 4) {
+        debugPrint(
+          'ERREUR : labels.txt contient ${_labels.length} classes '
+          'mais le modèle en sort ${_nbCanaux - 4}. Corriger labels.txt.',
+        );
+        _isLoaded = false;
+        return false;
+      }
+
       _isLoaded = true;
       debugPrint(
-        'Modèle TFLite v2 chargé (entrée: ${_inputSize}x$_inputSize, classes: $_labels)',
+        'Modèle chargé : entrée $inShape (${_nchw ? "NCHW" : "NHWC"}), '
+        'sortie $outShape, classes $_labels',
       );
       return true;
     } catch (e) {
@@ -60,206 +105,214 @@ class TfliteService {
     }
   }
 
-  /// Exécute la détection IA sur une frame de la caméra
+  /// Analyse une image de la caméra et renvoie les détections retenues.
   List<Detection> detecterSurFrame(
     CameraImage cameraImage, {
     int sensorOrientation = 90,
     bool isFrontCamera = false,
     double seuilConfiance = 0.50,
   }) {
-    if (!_isLoaded || _interpreter == null || _labels.isEmpty) {
+    if (!_isLoaded || _interpreter == null) return [];
+
+    try {
+      // 1. Image caméra -> tampon d'entrée du modèle (rotation + letterbox + /255)
+      final cadre = _preparerEntree(cameraImage, sensorOrientation, isFrontCamera);
+      if (cadre == null) return [];
+
+      // 2. Inférence : on copie le tampon dans le tenseur d'entrée, on lance le
+      //    modèle, puis on relit les octets du tenseur de sortie.
+      _interpreter!.getInputTensor(0).data = _entree.buffer.asUint8List();
+      _interpreter!.invoke();
+      final octets = _interpreter!.getOutputTensor(0).data;
+      final lecture = ByteData.sublistView(octets);
+      for (int i = 0; i < _sortie.length; i++) {
+        _sortie[i] = lecture.getFloat32(i * 4, Endian.little);
+      }
+
+      // 3. Décodage des 8400 boîtes candidates, puis suppression des doublons
+      final brutes = _decoder(cadre, seuilConfiance);
+      return _appliquerNMS(brutes, iouThreshold: 0.45);
+    } catch (e) {
+      debugPrint('Erreur pendant la détection : $e');
       return [];
     }
-
-    // 1. Conversion CameraImage -> img.Image RGB
-    img.Image? rgbImage = _convertirCameraImage(cameraImage);
-    if (rgbImage == null) return [];
-
-    // 2. Rotation selon l'orientation du capteur téléphone
-    if (sensorOrientation != 0) {
-      rgbImage = img.copyRotate(rgbImage, angle: sensorOrientation);
-    }
-    if (isFrontCamera) {
-      rgbImage = img.flipHorizontal(rgbImage);
-    }
-
-    // 3. Redimensionnement à la taille attendue par le modèle (ex: 640x640)
-    final resized = img.copyResize(
-      rgbImage,
-      width: _inputSize,
-      height: _inputSize,
-    );
-
-    // 4. Construction du tenseur d'entrée [1, H, W, 3]
-    final input = _creerTenseurEntree(resized);
-
-    // 5. Préparation des tenseurs de sortie et inférence
-    final outputTensors = _interpreter!.getOutputTensors();
-    final List<Detection> brutes = [];
-
-    if (outputTensors.length == 1) {
-      // Format YOLO (v8 / v11) : [1, 4 + nbClasses, nbBoites] ou [1, nbBoites, 4 + nbClasses]
-      final shape = outputTensors[0].shape;
-      final output = List.generate(
-        shape[0],
-        (_) => List.generate(
-          shape[1],
-          (_) => List<double>.filled(shape[2], 0.0),
-        ),
-      );
-
-      _interpreter!.run(input, output);
-      brutes.addAll(_decoderSortieYolo(output[0], shape, seuilConfiance));
-    } else if (outputTensors.length >= 3) {
-      // Format SSD MobileNet : boxes [1, N, 4], classes [1, N], scores [1, N]
-      final numDetections = outputTensors[1].shape[1];
-      final boxes = List.generate(
-        1,
-        (_) => List.generate(numDetections, (_) => List<double>.filled(4, 0.0)),
-      );
-      final classes = List.generate(1, (_) => List<double>.filled(numDetections, 0.0));
-      final scores = List.generate(1, (_) => List<double>.filled(numDetections, 0.0));
-      final count = List<double>.filled(1, 0.0);
-
-      final outputs = <int, Object>{
-        0: boxes,
-        1: classes,
-        2: scores,
-        if (outputTensors.length >= 4) 3: count,
-      };
-
-      _interpreter!.runForMultipleInputs([input], outputs);
-      brutes.addAll(_decoderSortieSsd(boxes[0], classes[0], scores[0], seuilConfiance));
-    }
-
-    // 6. Suppression des boîtes superposées (Non-Maximum Suppression)
-    return _appliquerNMS(brutes, iouThreshold: 0.45);
   }
 
-  Object _creerTenseurEntree(img.Image image) {
-    if (_isQuantized) {
-      return [
-        List.generate(
-          _inputSize,
-          (y) => List.generate(_inputSize, (x) {
-            final p = image.getPixel(x, y);
-            return [p.r.toInt(), p.g.toInt(), p.b.toInt()];
-          }),
-        ),
-      ];
-    } else {
-      return [
-        List.generate(
-          _inputSize,
-          (y) => List.generate(_inputSize, (x) {
-            final p = image.getPixel(x, y);
-            return [p.r / 255.0, p.g / 255.0, p.b / 255.0];
-          }),
-        ),
-      ];
+  /// Remplit [_entree] à partir de l'image caméra, en une seule passe :
+  /// conversion YUV -> RGB, rotation selon le capteur, miroir éventuel,
+  /// redimensionnement en gardant les proportions (letterbox, bandes grises
+  /// 114 comme à l'entraînement) et normalisation entre 0 et 1.
+  _Cadre? _preparerEntree(CameraImage image, int rotation, bool miroir) {
+    final bool yuv = image.format.group == ImageFormatGroup.yuv420;
+    final bool bgra = image.format.group == ImageFormatGroup.bgra8888;
+    if (!yuv && !bgra) return null;
+
+    final int w = image.width;
+    final int h = image.height;
+    final int rot = ((rotation % 360) + 360) % 360;
+    final bool tourne = rot == 90 || rot == 270;
+    final int rw = tourne ? h : w; // dimensions de l'image redressée
+    final int rh = tourne ? w : h;
+
+    final int s = _inputSize;
+    final double echelle = min(s / rw, s / rh);
+    final int nw = (rw * echelle).round();
+    final int nh = (rh * echelle).round();
+    final int padX = (s - nw) ~/ 2;
+    final int padY = (s - nh) ~/ 2;
+
+    _entree.fillRange(0, _entree.length, 114 / 255.0);
+
+    final Uint8List p0 = image.planes[0].bytes;
+    final int ligne0 = image.planes[0].bytesPerRow;
+    Uint8List? pu;
+    Uint8List? pv;
+    int ligneUV = 0;
+    int pasUV = 1;
+    if (yuv) {
+      pu = image.planes[1].bytes;
+      pv = image.planes[2].bytes;
+      ligneUV = image.planes[1].bytesPerRow;
+      pasUV = image.planes[1].bytesPerPixel ?? 1;
     }
-  }
 
-  List<Detection> _decoderSortieYolo(
-    List<List<double>> matrice,
-    List<int> shape,
-    double seuil,
-  ) {
-    final List<Detection> detections = [];
-    // YOLOv8/v11 exporte généralement [1, 4 + C, N] (ex: [1, 10, 8400])
-    final bool transpose = shape[1] < shape[2];
-    final int nbBoites = transpose ? shape[2] : shape[1];
-    final int nbCanaux = transpose ? shape[1] : shape[2];
-    final int nbClasses = min(_labels.length, nbCanaux - 4);
+    final int plan = s * s;
+    for (int oy = 0; oy < nh; oy++) {
+      int ry = (oy / echelle).floor();
+      if (ry >= rh) ry = rh - 1;
+      for (int ox = 0; ox < nw; ox++) {
+        int rx = (ox / echelle).floor();
+        if (rx >= rw) rx = rw - 1;
+        if (miroir) rx = rw - 1 - rx;
 
-    if (nbClasses <= 0) return detections;
+        // (rx, ry) dans l'image redressée -> (sx, sy) dans l'image du capteur
+        int sx;
+        int sy;
+        switch (rot) {
+          case 90:
+            sx = ry;
+            sy = h - 1 - rx;
+            break;
+          case 180:
+            sx = w - 1 - rx;
+            sy = h - 1 - ry;
+            break;
+          case 270:
+            sx = w - 1 - ry;
+            sy = rx;
+            break;
+          default:
+            sx = rx;
+            sy = ry;
+        }
 
-    for (int i = 0; i < nbBoites; i++) {
-      double maxScore = 0.0;
-      int bestClassIdx = 0;
+        double r;
+        double g;
+        double b;
+        if (yuv) {
+          final int yy = p0[sy * ligne0 + sx];
+          final int iuv = (sy >> 1) * ligneUV + (sx >> 1) * pasUV;
+          final int uu = pu![iuv] - 128;
+          final int vv = pv![iuv] - 128;
+          r = yy + 1.370705 * vv;
+          g = yy - 0.337633 * uu - 0.698001 * vv;
+          b = yy + 1.732446 * uu;
+        } else {
+          final int i = sy * ligne0 + sx * 4;
+          b = p0[i].toDouble();
+          g = p0[i + 1].toDouble();
+          r = p0[i + 2].toDouble();
+        }
+        r = (r < 0 ? 0 : (r > 255 ? 255 : r)) / 255.0;
+        g = (g < 0 ? 0 : (g > 255 ? 255 : g)) / 255.0;
+        b = (b < 0 ? 0 : (b > 255 ? 255 : b)) / 255.0;
 
-      for (int c = 0; c < nbClasses; c++) {
-        final double score = transpose ? matrice[4 + c][i] : matrice[i][4 + c];
-        if (score > maxScore) {
-          maxScore = score;
-          bestClassIdx = c;
+        final int px = padX + ox;
+        final int py = padY + oy;
+        if (_nchw) {
+          final int k = py * s + px;
+          _entree[k] = r;
+          _entree[plan + k] = g;
+          _entree[2 * plan + k] = b;
+        } else {
+          final int k = (py * s + px) * 3;
+          _entree[k] = r;
+          _entree[k + 1] = g;
+          _entree[k + 2] = b;
         }
       }
+    }
+    return _Cadre(echelle, padX, padY, rw, rh);
+  }
 
-      if (maxScore < seuil) continue;
+  /// Lit les 8400 boîtes candidates et garde celles dont la meilleure classe
+  /// dépasse le seuil. Les coordonnées sont remises dans le repère de l'image
+  /// redressée (sans les bandes grises), puis normalisées entre 0 et 1.
+  List<Detection> _decoder(_Cadre c, double seuil) {
+    final List<Detection> detections = [];
+    final int nbClasses = _nbCanaux - 4;
+    final double s = _inputSize.toDouble();
 
-      double cx = transpose ? matrice[0][i] : matrice[i][0];
-      double cy = transpose ? matrice[1][i] : matrice[i][1];
-      double w = transpose ? matrice[2][i] : matrice[i][2];
-      double h = transpose ? matrice[3][i] : matrice[i][3];
+    double val(int canal, int i) => _sortieTransposee
+        ? _sortie[i * _nbCanaux + canal]
+        : _sortie[canal * _nbBoites + i];
 
-      // Si le modèle sort des pixels [0..640] au lieu de [0..1], on normalise
-      if (w > 1.5 || h > 1.5) {
-        cx /= _inputSize;
-        cy /= _inputSize;
-        w /= _inputSize;
-        h /= _inputSize;
+    for (int i = 0; i < _nbBoites; i++) {
+      double meilleur = 0.0;
+      int classe = 0;
+      for (int k = 0; k < nbClasses; k++) {
+        final double score = val(4 + k, i);
+        if (score > meilleur) {
+          meilleur = score;
+          classe = k;
+        }
+      }
+      if (meilleur < seuil) continue;
+
+      double cx = val(0, i);
+      double cy = val(1, i);
+      double bw = val(2, i);
+      double bh = val(3, i);
+
+      // Les exports récents sortent des coordonnées entre 0 et 1, les anciens
+      // en pixels du modèle : on ramène tout en pixels du modèle.
+      if (cx <= 1.5 && cy <= 1.5 && bw <= 1.5 && bh <= 1.5) {
+        cx *= s;
+        cy *= s;
+        bw *= s;
+        bh *= s;
       }
 
-      final double left = (cx - w / 2).clamp(0.0, 1.0);
-      final double top = (cy - h / 2).clamp(0.0, 1.0);
-      final double width = w.clamp(0.0, 1.0 - left);
-      final double height = h.clamp(0.0, 1.0 - top);
+      // On retire les bandes grises et on revient à l'image redressée
+      final double x1 = ((cx - bw / 2) - c.padX) / c.echelle / c.largeur;
+      final double y1 = ((cy - bh / 2) - c.padY) / c.echelle / c.hauteur;
+      final double x2 = ((cx + bw / 2) - c.padX) / c.echelle / c.largeur;
+      final double y2 = ((cy + bh / 2) - c.padY) / c.echelle / c.hauteur;
 
-      final String classId = _labels[bestClassIdx];
+      final double left = x1.clamp(0.0, 1.0);
+      final double top = y1.clamp(0.0, 1.0);
+      final double right = x2.clamp(0.0, 1.0);
+      final double bottom = y2.clamp(0.0, 1.0);
+      if (right <= left || bottom <= top) continue;
+
+      final String id = _labels[classe];
       detections.add(
         Detection(
-          idEquipement: classId,
-          label: _nomsAffichage[classId] ?? classId,
-          confidence: maxScore,
-          boundingBox: Rect.fromLTWH(left, top, width, height),
-        ),
-      );
-    }
-
-    return detections;
-  }
-
-  List<Detection> _decoderSortieSsd(
-    List<List<double>> boxes,
-    List<double> classes,
-    List<double> scores,
-    double seuil,
-  ) {
-    final List<Detection> detections = [];
-    for (int i = 0; i < scores.length; i++) {
-      if (scores[i] < seuil) continue;
-      final int classIdx = classes[i].round();
-      if (classIdx < 0 || classIdx >= _labels.length) continue;
-
-      // SSD renvoie [ymin, xmin, ymax, xmax] normalisés
-      final double top = boxes[i][0].clamp(0.0, 1.0);
-      final double left = boxes[i][1].clamp(0.0, 1.0);
-      final double bottom = boxes[i][2].clamp(0.0, 1.0);
-      final double right = boxes[i][3].clamp(0.0, 1.0);
-
-      final String classId = _labels[classIdx];
-      detections.add(
-        Detection(
-          idEquipement: classId,
-          label: _nomsAffichage[classId] ?? classId,
-          confidence: scores[i],
-          boundingBox: Rect.fromLTWH(
-            left,
-            top,
-            (right - left).clamp(0.0, 1.0),
-            (bottom - top).clamp(0.0, 1.0),
-          ),
+          idEquipement: id,
+          label: _nomsAffichage[id] ?? id,
+          confidence: meilleur,
+          boundingBox: Rect.fromLTRB(left, top, right, bottom),
         ),
       );
     }
     return detections;
   }
 
+  /// Supprime les boîtes en double : pour une même classe, on garde la plus sûre
+  /// et on retire celles qui la recouvrent à plus de [iouThreshold].
   List<Detection> _appliquerNMS(List<Detection> detections, {double iouThreshold = 0.45}) {
     detections.sort((a, b) => b.confidence.compareTo(a.confidence));
     final List<Detection> retenues = [];
-
     for (final det in detections) {
       bool chevauchement = false;
       for (final gardee in retenues) {
@@ -269,9 +322,7 @@ class TfliteService {
           break;
         }
       }
-      if (!chevauchement) {
-        retenues.add(det);
-      }
+      if (!chevauchement) retenues.add(det);
     }
     return retenues;
   }
@@ -282,56 +333,6 @@ class TfliteService {
     final interArea = inter.width * inter.height;
     final unionArea = (a.width * a.height) + (b.width * b.height) - interArea;
     return unionArea <= 0 ? 0.0 : interArea / unionArea;
-  }
-
-  img.Image? _convertirCameraImage(CameraImage image) {
-    try {
-      if (image.format.group == ImageFormatGroup.bgra8888) {
-        final plane = image.planes[0];
-        return img.Image.fromBytes(
-          width: image.width,
-          height: image.height,
-          bytes: plane.bytes.buffer,
-          order: img.ChannelOrder.bgra,
-        );
-      }
-
-      if (image.format.group == ImageFormatGroup.yuv420) {
-        final int width = image.width;
-        final int height = image.height;
-        final out = img.Image(width: width, height: height);
-
-        final yPlane = image.planes[0].bytes;
-        final uPlane = image.planes[1].bytes;
-        final vPlane = image.planes[2].bytes;
-
-        final int yRowStride = image.planes[0].bytesPerRow;
-        final int uvRowStride = image.planes[1].bytesPerRow;
-        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-
-        for (int y = 0; y < height; y++) {
-          final int yRowOffset = y * yRowStride;
-          final int uvRowOffset = (y >> 1) * uvRowStride;
-
-          for (int x = 0; x < width; x++) {
-            final int yVal = yPlane[yRowOffset + x];
-            final int uvIndex = uvRowOffset + (x >> 1) * uvPixelStride;
-            final int uVal = uPlane[uvIndex];
-            final int vVal = vPlane[uvIndex];
-
-            final int r = (yVal + 1.370705 * (vVal - 128)).round().clamp(0, 255);
-            final int g = (yVal - 0.337633 * (uVal - 128) - 0.698001 * (vVal - 128)).round().clamp(0, 255);
-            final int b = (yVal + 1.732446 * (uVal - 128)).round().clamp(0, 255);
-
-            out.setPixelRgb(x, y, r, g, b);
-          }
-        }
-        return out;
-      }
-    } catch (e) {
-      debugPrint('Erreur conversion image caméra : $e');
-    }
-    return null;
   }
 
   void dispose() {
