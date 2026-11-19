@@ -1,8 +1,8 @@
 // Point d'entrée de l'application : initialise le moteur Flutter
-// et configure le thème visuel sombre avant d'instancier l'écran de navigation principal.
+// et configure le thème visuel sombre avant d'instancier l'écran d'accueil.
 
 import 'package:flutter/material.dart';
-import 'vue/navigation.dart';
+import 'vue/accueil.dart'; // Import du nouvel écran d'accueil
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +22,7 @@ class EPISafetyApp extends StatelessWidget {
         colorSchemeSeed: Colors.amber,
         brightness: Brightness.dark,
       ),
-      home: const NavigationScreen(),
+      home: const AccueilScreen(),
     );
   }
 }

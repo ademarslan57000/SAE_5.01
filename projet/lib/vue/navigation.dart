@@ -46,29 +46,46 @@ class _NavigationScreenState extends State<NavigationScreen> {
           .where((l) => l.isNotEmpty)
           .toList();
 
-      setState(() {
-        _equipements = lignes.map((label) {
-          final meta = _labelsMetadonnees[label];
-          return Equipement(
-            id: label,
-            nom: meta?.$1 ?? label,
-            icon: meta?.$2 ?? '🛡️',
-            isRequired: label == 'helmet' || label == 'vest' || label == 'boots',
-          );
-        }).toList();
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _equipements = lignes.map((label) {
+            final meta = _labelsMetadonnees[label];
+            return Equipement(
+              id: label,
+              nom: meta?.$1 ?? label,
+              icon: meta?.$2 ?? '🛡️',
+              isRequired: label == 'helmet' || label == 'vest' || label == 'boots',
+            );
+          }).toList();
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      debugPrint("Erreur lors du chargement de labels.txt : $e");
-      setState(() => _isLoading = false);
+      debugPrint("Fichier labels.txt non trouvé, utilisation des équipements par défaut. Erreur : $e");
+      
+      // Sécurité : Si le fichier txt plante, on charge des équipements de secours
+      // pour que l'application ne reste pas sur une page blanche !
+      if (mounted) {
+        setState(() {
+          _equipements = [
+            Equipement(id: 'helmet', nom: 'Casque de chantier', icon: '🪖', isRequired: true),
+            Equipement(id: 'vest', nom: 'Gilet haute visibilité', icon: '🦺', isRequired: true),
+          ];
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Si ça charge, on montre un indicateur plutôt qu'une page blanche
     if (_isLoading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.amber),
+        ),
       );
     }
 
@@ -104,7 +121,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
           NavigationDestination(
             icon: Icon(Icons.admin_panel_settings_outlined),
             selectedIcon: Icon(Icons.admin_panel_settings),
-            label: 'Config Admin',
+            label: 'Config',
           ),
           NavigationDestination(
             icon: Icon(Icons.bar_chart_outlined),

@@ -11,7 +11,9 @@ import '../../service/decision_service.dart';
 import '../../service/historique_service.dart';
 import '../historique/historique.dart';
 import 'detection_overlay.dart';
+import '../../service/auth_service.dart';
 import 'resultat_scan.dart';
+import '../accueil.dart';
 
 class ScanScreen extends StatefulWidget {
   final List<CameraDescription>? cameras;
@@ -198,7 +200,17 @@ class _ScanScreenState extends State<ScanScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _RoundButton(icon: Icons.arrow_back, onTap: () => Navigator.pop(context)),
+                _RoundButton(
+  icon: Icons.arrow_back, 
+  onTap: () {
+    AuthService.utilisateurCourant = null;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const AccueilScreen()),
+      (Route<dynamic> route) => false,
+    );
+  }
+),
                 
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -319,6 +331,7 @@ class _ScanScreenState extends State<ScanScreen> {
                           0.6, 
                           '6-classes-v1',
                           cheminImage: savedImagePath,
+                          utilisateurId: AuthService.utilisateurCourant?.id,
                         );
 
                         if (mounted) {
