@@ -227,14 +227,15 @@ class _ScanScreenState extends State<ScanScreen> {
 
                 Row(
                   children: [
-                    _RoundButton(
-                      icon: Icons.history,
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen())),
-                    ),
-                    if (_cameras.length > 1) ...[
+                    if (AuthService.utilisateurCourant?.role == 'admin') ...[
+                      _RoundButton(
+                        icon: Icons.history,
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen())),
+                      ),
                       const SizedBox(width: 8),
-                      _RoundButton(icon: Icons.flip_camera_ios, onTap: _switchCamera),
                     ],
+                    if (_cameras.length > 1)
+                      _RoundButton(icon: Icons.flip_camera_ios, onTap: _switchCamera),
                   ],
                 ),
               ],

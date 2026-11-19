@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import '../modele/equipement.dart';
+import '../service/auth_service.dart';
 import 'scan/scanner.dart';
 import 'admin/admin.dart';
 import 'historique/historique.dart';
@@ -72,13 +73,20 @@ class _NavigationScreenState extends State<NavigationScreen> {
       );
     }
 
+    final scan = ScanScreen(
+      equipementsRequis: _equipements.where((e) => e.isRequired).toList(),
+    );
+
+    // Ouvrier : uniquement le scan, sans barre de navigation ni config/historique.
+    if (AuthService.utilisateurCourant?.role != 'admin') {
+      return Scaffold(body: scan);
+    }
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          ScanScreen(
-            equipementsRequis: _equipements.where((e) => e.isRequired).toList(),
-          ),
+          scan,
           AdminConfigScreen(
             equipements: _equipements,
             onChanged: (updatedList) {

@@ -56,6 +56,27 @@ class AuthService {
     }
   }
 
+  /// Retourne l'utilisateur actif du rôle donné correspondant au prénom, au nom
+  /// (sans tenir compte de la casse ni des espaces autour) et au PIN, sinon null.
+  static Future<Utilisateur?> connecterParIdentite({
+    required String prenom,
+    required String nom,
+    required String pin,
+    required String role,
+  }) async {
+    String norm(String t) => t.trim().toLowerCase();
+    final comptes = await getComptes();
+    for (final c in comptes) {
+      if (c.role == role &&
+          norm(c.prenom) == norm(prenom) &&
+          norm(c.nom) == norm(nom) &&
+          c.pin == pin) {
+        return c;
+      }
+    }
+    return null;
+  }
+
   static Future<void> inscrireUtilisateur({
     required String nom,
     required String prenom,
