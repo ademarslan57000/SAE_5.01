@@ -19,7 +19,7 @@ android {
         applicationId = "com.example.projet"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 24
+        minSdk = 26 // <-- MODIFIÉ ICI (était 24)
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
@@ -27,6 +27,11 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // <-- AJOUTÉ ICI : empêche la compression du modèle TFLite dans l'APK
+    androidResources {
+        noCompress += listOf("tflite", "lite")
     }
 
     buildTypes {

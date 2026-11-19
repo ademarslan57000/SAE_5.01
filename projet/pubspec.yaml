@@ -36,6 +36,8 @@ dependencies:
   image_picker: ^1.1.2
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.2.3
+  tflite_flutter: ^0.12.1
+  image: ^4.13.1
 # ultralytics_yolo: ^0.1.25
 
 
@@ -62,6 +64,7 @@ flutter:
   assets:
     - assets/yolo11n.tflite
     - assets/labels.txt
+    - assets/best.tflite
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

@@ -1,15 +1,14 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import '../../modele/equipement.dart';
 import '../../modele/detection.dart';
-import '../../modele/decision.dart';
 import '../../service/decision_service.dart';
 import '../../service/historique_service.dart';
 import '../../service/auth_service.dart';
+import '../../service/tflite_service.dart';
 import '../accueil.dart';
 import '../historique/historique.dart';
 import 'detection_overlay.dart';
@@ -33,25 +32,25 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _isSaving = false;
   String? _error;
 
+  final TfliteService _tfliteService = TfliteService();
+  bool _isDetecting = false;
+  double _realFps = 0.0;
+
   List<Detection> _detections = [];
   bool _simulerCasque = false;
   bool _simulerGilet = false;
 
   final _stabilisateur = StabilisateurDecision(maxFrames: 5, minConfirmations: 3);
 
-  Timer? _fpsTimer;
-  double _currentFps = 29.5;
-  final Random _rng = Random();
-
   @override
   void initState() {
     super.initState();
-    _initCamera();
-    _fpsTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (mounted) {
-        setState(() => _currentFps = 28.0 + _rng.nextDouble() * 3.2);
-      }
-    });
+    _initTout();
+  }
+
+  Future<void> _initTout() async {
+    await _tfliteService.chargerModele();
+    await _initCamera();
   }
 
   Future<void> _initCamera() async {
@@ -67,11 +66,18 @@ class _ScanScreenState extends State<ScanScreen> {
         return setState(() => _error = "Aucune caméra détectée.");
       }
 
-      await _controller?.dispose();
+      if (_controller != null) {
+        if (_controller!.value.isStreamingImages) {
+          await _controller!.stopImageStream();
+        }
+        await _controller!.dispose();
+      }
+
       _controller = CameraController(
         _cameras[_camIndex],
         ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420,
       );
 
       await _controller!.initialize();
@@ -84,10 +90,45 @@ class _ScanScreenState extends State<ScanScreen> {
           _isReady = true;
           _error = null;
         });
+        _demarrerFluxIA();
       }
     } on CameraException catch (e) {
       if (mounted) setState(() => _error = "Erreur caméra : ${e.description}");
     }
+  }
+
+  void _demarrerFluxIA() {
+    if (kIsWeb || !_tfliteService.isLoaded || _controller == null) return;
+    if (_controller!.value.isStreamingImages) return;
+
+    final cam = _cameras[_camIndex];
+    final bool isFront = cam.lensDirection == CameraLensDirection.front;
+
+    _controller!.startImageStream((CameraImage image) {
+      if (_isDetecting || _isSaving || !mounted) return;
+      _isDetecting = true;
+
+      final sw = Stopwatch()..start();
+      final resultats = _tfliteService.detecterSurFrame(
+        image,
+        sensorOrientation: cam.sensorOrientation,
+        isFrontCamera: isFront,
+        seuilConfiance: seuilConfiance,
+      );
+      sw.stop();
+
+      if (mounted) {
+        final double fps = sw.elapsedMilliseconds > 0
+            ? (1000.0 / sw.elapsedMilliseconds).clamp(1.0, 60.0)
+            : 30.0;
+        setState(() {
+          _detections = resultats;
+          _realFps = fps;
+        });
+      }
+
+      _isDetecting = false;
+    });
   }
 
   void _switchCamera() {
@@ -135,8 +176,11 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   void dispose() {
-    _fpsTimer?.cancel();
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      _controller!.stopImageStream();
+    }
     _controller?.dispose();
+    _tfliteService.dispose();
     super.dispose();
   }
 
@@ -164,13 +208,11 @@ class _ScanScreenState extends State<ScanScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Caméra
           if (_controller?.value.isInitialized ?? false)
             CameraPreview(_controller!)
           else
             const ColoredBox(color: Colors.black),
 
-          // 2. Boîtes de détection
           if (_detections.isNotEmpty)
             IgnorePointer(
               child: DetectionOverlay(
@@ -179,7 +221,6 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ),
 
-          // 3. Viseur
           Center(
             child: IgnorePointer(
               child: SizedBox(
@@ -192,7 +233,6 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-          // 4. Header (Déconnexion/Retour, FPS, Historique, Bascule Caméra)
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
@@ -211,38 +251,43 @@ class _ScanScreenState extends State<ScanScreen> {
                     );
                   },
                 ),
-
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.tealAccent.withValues(alpha: 0.6)),
+                    border: Border.all(
+                      color: (_tfliteService.isLoaded ? Colors.greenAccent : Colors.orangeAccent)
+                          .withValues(alpha: 0.7),
+                    ),
                   ),
                   child: Text(
-                    'TEST • ${_currentFps.toStringAsFixed(1)} FPS',
-                    style: const TextStyle(color: Colors.tealAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                    _tfliteService.isLoaded
+                        ? 'IA v2 • ${_realFps.toStringAsFixed(1)} FPS'
+                        : 'MODE SECOURS (sans .tflite)',
+                    style: TextStyle(
+                      color: _tfliteService.isLoaded ? Colors.greenAccent : Colors.orangeAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-
                 Row(
                   children: [
-                    if (AuthService.utilisateurCourant?.role == 'admin') ...[
-                      _RoundButton(
-                        icon: Icons.history,
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen())),
-                      ),
+                    _RoundButton(
+                      icon: Icons.history,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen())),
+                    ),
+                    if (_cameras.length > 1) ...[
                       const SizedBox(width: 8),
-                    ],
-                    if (_cameras.length > 1)
                       _RoundButton(icon: Icons.flip_camera_ios, onTap: _switchCamera),
+                    ],
                   ],
                 ),
               ],
             ),
           ),
 
-          // 5. Statut des EPI requis
           Positioned(
             top: MediaQuery.of(context).padding.top + 65,
             left: 16,
@@ -254,38 +299,38 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
 
-          // 6. Commandes du bas
           Positioned(
             bottom: 24,
             left: 20,
             right: 20,
             child: Column(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _TagButton(
-                      label: 'Casque',
-                      active: _simulerCasque,
-                      onTap: () {
-                        _simulerCasque = !_simulerCasque;
-                        _updateSimulations();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _TagButton(
-                      label: 'Gilet',
-                      active: _simulerGilet,
-                      onTap: () {
-                        _simulerGilet = !_simulerGilet;
-                        _updateSimulations();
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                // Bouton de validation (protégé contre les blocages caméra)
+                // Boutons de simulation affichés uniquement si le fichier .tflite n'est pas chargé
+                if (!_tfliteService.isLoaded) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _TagButton(
+                        label: 'Casque',
+                        active: _simulerCasque,
+                        onTap: () {
+                          _simulerCasque = !_simulerCasque;
+                          _updateSimulations();
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      _TagButton(
+                        label: 'Gilet',
+                        active: _simulerGilet,
+                        onTap: () {
+                          _simulerGilet = !_simulerGilet;
+                          _updateSimulations();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SizedBox(
                   width: double.infinity,
                   height: 52,
@@ -295,7 +340,11 @@ class _ScanScreenState extends State<ScanScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: _isSaving
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
                         : Icon(conforme ? Icons.check : Icons.lock_outline, color: Colors.white),
                     label: Text(
                       _isSaving ? 'Sauvegarde...' : (conforme ? 'Valider le passage' : 'Vérifier l\'accès'),
@@ -305,13 +354,17 @@ class _ScanScreenState extends State<ScanScreen> {
                         ? null
                         : () async {
                             setState(() => _isSaving = true);
+                            final detectionsSnapshot = List<Detection>.from(_detections);
+
                             try {
                               String? rawPath;
 
-                              // Sécurité anti-blocage : ignore la capture si elle dépasse 800 ms
                               try {
                                 if (!kIsWeb && _controller != null && _controller!.value.isInitialized) {
-                                  final photo = await _controller!.takePicture().timeout(const Duration(milliseconds: 800));
+                                  if (_controller!.value.isStreamingImages) {
+                                    await _controller!.stopImageStream();
+                                  }
+                                  final photo = await _controller!.takePicture().timeout(const Duration(milliseconds: 1000));
                                   rawPath = photo.path;
                                 }
                               } catch (e) {
@@ -322,7 +375,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
                               final savedImagePath = await HistoriqueService.sauvegarderImageAvecBoites(
                                 rawImagePath: rawPath,
-                                detections: _detections,
+                                detections: detectionsSnapshot,
                                 idsRequis: idsRequis,
                               );
 
@@ -330,22 +383,23 @@ class _ScanScreenState extends State<ScanScreen> {
                                 resultat,
                                 widget.equipementsRequis,
                                 1,
-                                0.6,
-                                '6-classes-v1',
+                                seuilConfiance,
+                                'model-v2-tflite',
                                 cheminImage: savedImagePath,
                                 utilisateurId: AuthService.utilisateurCourant?.id,
                               );
 
                               if (mounted) {
-                                Navigator.push(
+                                await Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => ResultatScanScreen(
                                       equipementsRequis: widget.equipementsRequis,
-                                      detections: _detections,
+                                      detections: detectionsSnapshot,
                                     ),
                                   ),
                                 );
+                                _demarrerFluxIA();
                               }
                             } catch (e) {
                               debugPrint("Erreur de sauvegarde : $e");
@@ -386,10 +440,17 @@ class _StatusCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('ÉQUIPEMENTS REQUIS', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'ÉQUIPEMENTS REQUIS',
+                    style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
                   Text(
                     conforme ? 'CONFORME' : 'NON CONFORME',
-                    style: TextStyle(color: conforme ? Colors.greenAccent : Colors.orangeAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: conforme ? Colors.greenAccent : Colors.orangeAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
